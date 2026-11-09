@@ -1,5 +1,5 @@
 // Deterministic PII edge cases (no LLM): what must be masked, what must be left alone, and known gaps.
-import { maskPii, unmask } from "../lib/guard";
+import { maskPii, normalizeInput, unmask } from "../lib/guard";
 
 type Case = { name: string; input: string; masked?: string[]; clean?: boolean; raw?: string[]; known?: boolean };
 
@@ -25,6 +25,20 @@ const cases: Case[] = [
   { name: "E-posta artı", input: "ali.veli+bilet@mail.example.com.tr", masked: ["EPOSTA"], raw: ["ali.veli+bilet"] },
   { name: "E-posta büyük harf", input: "ALI.VELI@EXAMPLE.COM", masked: ["EPOSTA"], raw: ["ALI.VELI"] },
 
+  // added after the 2026-11-10 review
+  { name: "TCKN noktalı", input: "TC: 100.000.001.46", masked: ["TCKN"], raw: ["100.000.001.46"] },
+  { name: "TCKN bölünmez boşluk", input: "TC: 100 000 001 46", masked: ["TCKN"], raw: ["146"] },
+  { name: "TCKN yanlış yazılmış (sağlama geçersiz), TC ile", input: "TC kimlik no: 12345678901", masked: ["TCKN"], raw: ["12345678901"] },
+  { name: "IBAN TR sonrası boşluk", input: "TR 33 0006 1005 1978 6457 8413 26", masked: ["IBAN"], raw: ["0006 1005"] },
+  { name: "IBAN noktalı", input: "TR33.0006.1005.1978.6457.8413.26", masked: ["IBAN"], raw: ["0006.1005"] },
+  { name: "Kart noktalı", input: "kart 4111.1111.1111.1111", masked: ["KART"], raw: ["4111.1111"] },
+  { name: "Kart 13 hane", input: "kart 4222222222222", masked: ["KART"], raw: ["4222222222222"] },
+  { name: "Kart 19 hane", input: "kart 6759649826438453009", masked: ["KART"], raw: ["6759649826438453009"] },
+  { name: "Telefon noktalı", input: "0532.123.45.67", masked: ["TELEFON"], raw: ["123.45.67"] },
+  { name: "Telefon sabit hat", input: "0212 555 12 34", masked: ["TELEFON"], raw: ["555 12 34"] },
+  { name: "Telefon yurt dışı", input: "+44 20 7946 0958", masked: ["TELEFON"], raw: ["7946 0958"] },
+  { name: "E-posta Türkçe harfli", input: "çağrı@example.com", masked: ["EPOSTA"], raw: ["çağrı"] },
+
   // must be left alone (false positives)
   { name: "11 hane, sağlama geçersiz", input: "Sipariş no 12345678901", clean: true },
   { name: "PNR", input: "ANK123 rezervasyonum", clean: true },
@@ -35,8 +49,8 @@ const cases: Case[] = [
   { name: "16 hane, Luhn geçersiz → maskelenir", input: "Fatura no 1234 5678 9012 3456", masked: ["KART"], raw: ["5678 9012"] },
 
   // adversarial / known gaps (reported separately, not failures)
-  { name: "TCKN tam genişlik rakam", input: "TC １００００００１４６", masked: ["TCKN"], known: true },
-  { name: "TCKN araya sıfır genişlikli boşluk", input: "TC 1000000​0146", masked: ["TCKN"], known: true },
+  { name: "TCKN tam genişlik rakam (artık maskelenir)", input: "TC １０００００００１４６", masked: ["TCKN"], raw: ["10000000146"] },
+  { name: "TCKN araya sıfır genişlikli boşluk (artık maskelenir)", input: "TC 1000000​0146", masked: ["TCKN"], raw: ["10000000146"] },
   { name: "Telefon sözcükle yazılmış", input: "beş üç iki yüz yirmi üç kırk beş altmış yedi", masked: ["TELEFON"], known: true },
   { name: "E-posta (at) yazımı", input: "ali.veli (at) example.com", masked: ["EPOSTA"], known: true },
 ];
@@ -54,7 +68,8 @@ for (const c of cases) {
   }
   const leaked = (c.raw ?? []).filter((r) => text.includes(r));
   if (leaked.length) problems.push(`ham değer çıktıda: ${leaked.join(" | ")}`);
-  if (entities.length && unmask(text, entities) !== c.input) problems.push("unmask gidiş-dönüş bozuk");
+  // Matching runs on NFKC-normalised text, so the round trip restores the normalised form of the input.
+  if (entities.length && unmask(text, entities) !== normalizeInput(c.input)) problems.push("unmask gidiş-dönüş bozuk");
 
   const ok = problems.length === 0;
   const tag = ok ? "OK   " : c.known ? "BOŞLUK" : "HATA ";

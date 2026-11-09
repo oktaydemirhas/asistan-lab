@@ -13,20 +13,31 @@ function validTckn(d: string): boolean {
   return n[9] === d10 && n[10] === d11;
 }
 
+/** Full-width digits, non-breaking spaces and zero-width characters are folded away so the patterns below see plain text. */
+export function normalizeInput(s: string): string {
+  return s.normalize("NFKC").replace(/[​-‍⁠﻿]/g, "");
+}
+
 const PATTERNS: { type: string; re: RegExp; ok?: (m: string) => boolean }[] = [
   // Digit runs use lookarounds instead of \b so a value glued to letters ("TC10000000146") is still found.
-  { type: "IBAN", re: /(?<![A-Za-z0-9])TR\d{2}(?:[\s-]?\d{4}){5}[\s-]?\d{2}(?!\d)/gi },
-  // Any 4-4-4-4 or Amex 4-6-5 digit group is masked without a Luhn check: over-masking an invoice number is harmless, leaking a mistyped card is not.
-  { type: "KART", re: /(?<!\d)(?:(?:\d{4}[\s-]?){3}\d{4}|\d{4}[\s-]?\d{6}[\s-]?\d{5})(?!\d)/g },
-  { type: "TCKN", re: /(?<!\d)[1-9]\d{2}[\s-]?\d{3}[\s-]?\d{3}[\s-]?\d{2}(?!\d)/g, ok: validTckn },
-  { type: "TELEFON", re: /(?:\+?90[\s-]?|0)?\(?5\d{2}\)?[\s-]?\d{3}[\s-]?\d{2}[\s-]?\d{2}\b/g },
-  { type: "EPOSTA", re: /\b[\w.+-]+@[\w-]+(?:\.[\w-]+)+\b/g },
+  { type: "IBAN", re: /(?<![A-Za-z0-9])TR[\s.-]?\d{2}(?:[\s.-]?\d{4}){5}[\s.-]?\d{2}(?!\d)/gi },
+  // Any 4-4-4-4 or Amex 4-6-5 digit group, or a bare run of 13-19 digits, is masked without a Luhn check:
+  // over-masking an invoice number is harmless, leaking a mistyped card is not.
+  { type: "KART", re: /(?<!\d)(?:\d{13,19}|(?:\d{4}[\s.-]?){3}\d{4}|\d{4}[\s.-]?\d{6}[\s.-]?\d{5})(?!\d)/g },
+  { type: "TCKN", re: /(?<!\d)[1-9]\d{2}[\s.-]?\d{3}[\s.-]?\d{3}[\s.-]?\d{2}(?!\d)/g, ok: validTckn },
+  // An 11-digit number written right after "TC" / "kimlik" is masked even when the checksum fails (a mistyped TCKN must not leak).
+  { type: "TCKN", re: /(?<=(?:\btc|t\.c\.|kimlik)[^\d]{0,15})[1-9]\d{10}(?!\d)/gi },
+  { type: "TELEFON", re: /(?:\+?90[\s.-]?|0)?\(?5\d{2}\)?[\s.-]?\d{3}[\s.-]?\d{2}[\s.-]?\d{2}\b/g },
+  // Landlines (2xx-4xx area codes) and foreign numbers with a +country prefix.
+  { type: "TELEFON", re: /(?<!\d)(?:\+?90[\s.-]?|0)?\(?[2-4]\d{2}\)?[\s.-]?\d{3}[\s.-]?\d{2}[\s.-]?\d{2}(?!\d)/g },
+  { type: "TELEFON", re: /\+(?!90)\d{1,3}[\s.-]?\d{2,4}[\s.-]?\d{3,4}[\s.-]?\d{2,4}(?!\d)/g },
+  { type: "EPOSTA", re: /[\p{L}\p{N}._%+-]+@[\p{L}\p{N}-]+(?:\.[\p{L}\p{N}-]+)+/gu },
 ];
 
 /** Replace personal data with placeholders before anything leaves for the LLM. */
 export function maskPii(input: string): { text: string; entities: Entity[] } {
   const entities: Entity[] = [];
-  let text = input;
+  let text = normalizeInput(input);
   const counters: Record<string, number> = {};
   for (const { type, re, ok } of PATTERNS) {
     text = text.replace(re, (m) => {

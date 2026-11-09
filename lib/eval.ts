@@ -116,6 +116,13 @@ const pct = (arr: number[], p: number) => {
   return s.length ? s[Math.min(s.length - 1, Math.floor((p / 100) * s.length))] : 0;
 };
 
+/** Only the error's class and HTTP status are stored: an upstream error body can carry account identifiers. */
+function errorClass(e: unknown): string {
+  const name = e instanceof Error ? e.name : "Error";
+  const status = e instanceof Error ? /\b([45]\d\d)\b/.exec(e.message)?.[1] : undefined;
+  return status ? `${name} (HTTP ${status})` : name;
+}
+
 export async function runEval(concurrency = 3, files = { cases: CASES_FILE, results: RESULTS_FILE }): Promise<EvalReport> {
   resetState();
   const cases = loadCases(files.cases);
@@ -131,14 +138,14 @@ export async function runEval(concurrency = 3, files = { cases: CASES_FILE, resu
         const checks = check(c, r);
         results[i] = {
           id: c.id, category: c.category, question: maskPii(c.question).text, note: c.note,
-          pass: checks.every((x) => x.ok), checks, answer: r.answer, cited: r.cited, refused: r.refused,
+          pass: checks.every((x) => x.ok), checks, answer: maskPii(r.answer).text, cited: r.cited, refused: r.refused,
           refusedEarly: r.refusedEarly, toolCalls: r.toolCalls, flags: r.flags, latencyMs: r.latencyMs, tokens: r.usage.total_tokens,
         };
       } catch (e) {
         results[i] = {
           id: c.id, category: c.category, question: maskPii(c.question).text, note: c.note, pass: false,
-          checks: [{ name: "çalıştı", ok: false, detail: String(e) }], answer: "", cited: [], refused: false, refusedEarly: false,
-          toolCalls: [], flags: { injection: false, stripped: 0, masked: [], coverage: 0, similarity: 0 }, latencyMs: 0, tokens: 0, error: String(e),
+          checks: [{ name: "çalıştı", ok: false, detail: errorClass(e) }], answer: "", cited: [], refused: false, refusedEarly: false,
+          toolCalls: [], flags: { injection: false, stripped: 0, masked: [], coverage: 0, similarity: 0 }, latencyMs: 0, tokens: 0, error: errorClass(e),
         };
       }
     }

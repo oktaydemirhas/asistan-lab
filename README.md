@@ -30,9 +30,20 @@ Anahtar olmadan: `pii-check`, `guards-check` ve `retrieval-check` çalışır; s
 
 Holdout, sonradan yazıldı ve kodu ayarlamak için kullanılmadı. Kalan hatalar: "puset", "bavul" gibi eş anlamlılar.
 
+## Güvenlik incelemesi (2026-11-10) ve değişenler
+Bağımsız, salt-okunur bir inceleme şunları buldu; düzeltildi:
+- **Hız sınırı tek başlıkla atlatılıyordu** (`cf-connecting-ip`), yani ücretli LLM çağrıları sınırsızdı. Başlıklar artık yalnızca `TRUST_PROXY_HEADERS=1` ile kullanılır, IP'den bağımsız toplam sınır var, tablo sınırlı.
+- **Gövde boyutu okunduktan sonra kontrol ediliyordu.** Şimdi okunurken kesiliyor.
+- **`check_in` yalnızca PNR'ye bakıyordu.** Artık PNR, koltuk ve check-in isteği kullanıcı mesajında olmalı; `get_flight_status` de PNR'yi mesajdan doğrular. Tekrarlı check-in tüm koltukları tüketebiliyordu, eski koltuk artık serbest bırakılıyor.
+- **Eval sonuç dosyaları maskesiz cevap tutuyordu.** Cevaplar maskeli saklanıyor, hata metni yerine yalnızca hata sınıfı yazılıyor; mevcut sonuç dosyasındaki test kart numaraları maskelendi.
+- PII: tam genişlik rakam, bölünmez/sıfır genişlikli boşluk, noktalı biçimler, sabit hat, yurt dışı numara, 13-19 haneli kart, Türkçe harfli e-posta ve "TC" ardından gelen yanlış yazılmış TCKN artık maskeleniyor.
+- Eval yöneticisi token karşılaştırması sabit zamanlı; temel güvenlik başlıkları eklendi.
+
+Yeniden koşuldu: `pii-check` (40 durum, 0 hata), `ingress-check` (16/16), `tsc`. LLM gerektiren 31+30 senaryoluk eval bu değişikliklerden sonra **yeniden koşulmadı**; aşağıdaki 31/31 ve 28/30 sayıları öncesine aittir.
+
 ## Canlıya almadan önce (güvenlik incelemesinden)
 - `POST /api/eval` ~31 ücretli LLM çağrısı yapar. Üretimde `EVAL_ADMIN_TOKEN` yoksa 404 verir, varsa `x-admin-token` ister ve tek seferde bir koşu çalışır. Canlıda eval sonucunu yerelde koşup statik göstermek daha güvenli.
-- `/api/ask`: gövde 4 KB, soru 500 karakter, IP başına dakikada 12 istek (örnek belleği, sunucusuz ortamda yalnızca hız kesici). Asıl sınır için Cloudflare/Upstash kuralı ve sağlayıcıda aylık harcama limiti koy.
+- `/api/ask`: gövde 4 KB (okunurken kesilir), soru 500 karakter, istemci başına dakikada 12 ve **toplamda** dakikada 120 istek (örnek belleği, sunucusuz ortamda yalnızca hız kesici). `CF-Connecting-IP` / `X-Forwarded-For` istemci tarafından yazılabildiği için yalnızca `TRUST_PROXY_HEADERS=1` ise kullanılır (Vercel veya kendi proxy'nin arkasında); aksi halde herkes tek kovayı paylaşır. Asıl sınır için Cloudflare/Upstash kuralı ve sağlayıcıda aylık harcama limiti koy.
 - Hatalar istemciye genel mesajla döner, ayrıntı sunucu günlüğüne yazılır. LLM isteği 20 sn'de zaman aşımına uğrar, `LLM_BASE_URL` https olmalı.
 - Sistem prompt'undaki canary bir sır değil, alarm: cevapta görünürse cevap düşürülür.
 - `check_in` yalnızca kullanıcının mesajında yazdığı PNR için çalışır. Rezervasyon durumu tüm ziyaretçiler için ortak ve bellekte; demo verisi kurgusaldır.
@@ -43,4 +54,6 @@ Holdout, sonradan yazıldı ve kodu ayarlamak için kullanılmadı. Kalan hatala
 - Eş anlamlı sorgularda ("puset", "bavul") hibrit arama da hâlâ kaçırabiliyor. Anlamsal reddetme eşiği (0.84) dar bir marjla geliştirme setinden seçildi.
 - İlk istekte gömme modeli yüklenir (~12 sn); canlıda açılışta ısıtmak gerekir.
 - Eval setleri küçük ve yazarın kendi yazdığı; %100 sonuç genel başarı anlamına gelmez.
-- PII: tam genişlik rakam, sıfır genişlikli karakter, sözcükle yazılmış telefon ve "(at)" e-posta yazımı yakalanmıyor.
+- PII: sözcükle yazılmış telefon ve "(at)" e-posta yazımı yakalanmıyor. Maskeleme desen tabanlıdır; 40 durumluk `pii-check` dışındaki biçimler sızabilir.
+- Kimlik doğrulama yok: PNR tek "anahtar". Sahte arka ofis yerine gerçek bir sistem bağlanırsa soyad/oturum doğrulaması sunucuda yapılmalı, modelde değil. Araç koruması (PNR, koltuk ve check-in isteği kullanıcı mesajında olmalı) yalnızca sahte araç çağrılarını azaltır.
+- Rezervasyon durumu tüm ziyaretçiler için ortak ve bellekte; biri değiştirirse herkes görür.

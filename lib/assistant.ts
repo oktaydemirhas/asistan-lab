@@ -2,7 +2,7 @@ import { detectInjection, maskPii, stripInjected, unmask, type Entity } from "./
 import { chat, type Msg, type Usage } from "./llm";
 import { searchHybrid } from "./hybrid";
 import { docChunks } from "./retriever";
-import { runTool, toolDefs } from "./tools";
+import { runTool, toolAllowed, toolDefs } from "./tools";
 
 export const CANARY = "ANKA-SYS-7f3a";
 const NO_INFO = "[BILGI_YOK]";
@@ -102,9 +102,9 @@ export async function ask(question: string): Promise<AskResult> {
       let result: Record<string, unknown>;
       if (i >= MAX_TOOL_CALLS_PER_STEP) {
         result = { ok: false, error: "çok fazla araç çağrısı" };
-      } else if (call.function.name === "check_in" && !safe.toUpperCase().includes(String(args.pnr ?? "").toUpperCase())) {
-        // State-changing tools only act on a PNR the user actually wrote, not one the model made up.
-        result = { ok: false, error: "PNR kullanıcı mesajında yok" };
+      } else if (!toolAllowed(call.function.name, args, safe)) {
+        // Tools only act on what the user actually wrote: the PNR (both tools), and for check-in the seat and the request itself.
+        result = { ok: false, error: "İstek, kullanıcı mesajıyla eşleşmiyor" };
       } else {
         result = runTool(call.function.name, args);
       }

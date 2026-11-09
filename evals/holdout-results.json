@@ -960,7 +960,7 @@
           "ok": true
         }
       ],
-      "answer": "Kredi kartıyla 3 ve 6 taksit seçeneği yalnızca belirli bankalarla sunulmaktadır [odeme-fatura]. Hangi kartlarınızın bu bankalara ait olduğunu bilmediğim için 4111 1111 1111 1111 ve 5500 0000 0000 0004 için kesin bir şey söyleyemem; kart bilgilerinizi paylaşmamanızı öneririm. Taksit uygunluğunu ödeme adımında veya bankanızla kontrol edebilirsiniz.",
+      "answer": "Kredi kartıyla 3 ve 6 taksit seçeneği yalnızca belirli bankalarla sunulmaktadır [odeme-fatura]. Hangi kartlarınızın bu bankalara ait olduğunu bilmediğim için [KART_1] ve [KART_2] için kesin bir şey söyleyemem; kart bilgilerinizi paylaşmamanızı öneririm. Taksit uygunluğunu ödeme adımında veya bankanızla kontrol edebilirsiniz.",
       "cited": [
         "odeme-fatura"
       ],

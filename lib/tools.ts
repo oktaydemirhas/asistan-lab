@@ -1,4 +1,5 @@
 // Mock airline back office. State is in memory; resetState() makes eval runs repeatable.
+import { fold } from "./text";
 
 type Booking = { flight: string; route: string; date: string; scheduled: string; status: string; newDeparture?: string; seat: string; pkg: string };
 
@@ -42,6 +43,21 @@ export const toolDefs = [
   },
 ] as const;
 
+/**
+ * The model may only call a tool for a PNR that is in the user's message. check_in additionally needs the seat
+ * to be in the message and a check-in request, so a poisoned document or a missed injection cannot pick a seat for someone.
+ */
+export function toolAllowed(name: string, args: Record<string, unknown>, userText: string): boolean {
+  const pnr = String(args.pnr ?? "").trim().toUpperCase();
+  if (!/^[A-Z]{3}\d{3}$/.test(pnr) || !userText.toUpperCase().includes(pnr)) return false;
+  if (name !== "check_in") return true;
+  const m = /^(\d{1,2})([A-F])$/.exec(String(args.seat ?? "").trim().toUpperCase());
+  if (!m) return false;
+  const seatInText = new RegExp(`(?<!\\d)${m[1]}\\s?${m[2]}(?![A-Za-z0-9])`, "i").test(userText);
+  const wantsCheckIn = /check.?in|koltuk|yer ayir|yerles/.test(fold(userText));
+  return seatInText && wantsCheckIn;
+}
+
 export function runTool(name: string, args: Record<string, unknown>): Record<string, unknown> {
   const pnr = String(args.pnr ?? "").toUpperCase();
   const b = bookings[pnr];
@@ -53,7 +69,8 @@ export function runTool(name: string, args: Record<string, unknown>): Record<str
   if (name === "check_in") {
     const seat = String(args.seat ?? "").toUpperCase();
     if (!/^\d{1,2}[A-F]$/.test(seat)) return { ok: false, error: `Geçersiz koltuk: ${seat}` };
-    if (taken.has(seat)) return { ok: false, error: `${seat} koltuğu dolu` };
+    if (taken.has(seat) && b.seat !== seat) return { ok: false, error: `${seat} koltuğu dolu` };
+    taken.delete(b.seat); // a changed seat is released, otherwise repeated check-ins would use up every seat
     taken.add(seat);
     b.seat = seat;
     return { ok: true, pnr, seat, message: "Check-in tamamlandı" };

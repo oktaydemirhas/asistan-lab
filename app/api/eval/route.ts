@@ -1,4 +1,11 @@
+import { createHash, timingSafeEqual } from "node:crypto";
 import { readReport, runEval } from "@/lib/eval";
+
+function sameToken(given: string | null, expected: string): boolean {
+  const a = createHash("sha256").update(given ?? "").digest();
+  const b = createHash("sha256").update(expected).digest();
+  return timingSafeEqual(a, b);
+}
 
 export const maxDuration = 300;
 
@@ -14,7 +21,7 @@ export async function GET() {
  */
 export async function POST(req: Request) {
   const token = process.env.EVAL_ADMIN_TOKEN;
-  if (process.env.NODE_ENV === "production" && (!token || req.headers.get("x-admin-token") !== token)) {
+  if (process.env.NODE_ENV === "production" && (!token || !sameToken(req.headers.get("x-admin-token"), token))) {
     return new Response(null, { status: 404 });
   }
   if (running) return Response.json({ error: "already_running" }, { status: 409 });

@@ -22,3 +22,5 @@
 - MIN_SIMILARITY 0.84 was chosen from the ORIGINAL cases only (answerable min 0.848, out-of-scope max 0.832). Margin is thin; the LLM [BILGI_YOK] marker is the backstop.
 - Still failing: "puset" (retrieval ranks the wrong doc first) and "bavul" (gated before the LLM). Not patched on purpose: patching them would turn the holdout into a training set.
 - First request loads the model (~12 s cold), later ones ~0.4 s. Model cache lives in .cache/models (gitignored). next.config needs serverExternalPackages for onnxruntime-node.
+
+- 2026-11-10 review: a tool guard must check what the tool changes (the seat) and the user's intent, not only the id. Eval result files need the same masking as any other output. Forwarding headers are untrusted unless TRUST_PROXY_HEADERS=1.
